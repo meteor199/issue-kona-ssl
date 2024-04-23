@@ -15,6 +15,8 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+import org.example.Constant;
+import org.example.TLCPWithNettyDemo;
 
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLException;
@@ -54,8 +56,16 @@ public class NettySSLDemo {
                         protected void initChannel(SocketChannel ch) {
                             ChannelPipeline pipeline = ch.pipeline();
 
-                            SslHandler sslHandler = SSLHandlerProvider.getSSLHandler();
-                            pipeline.addLast(sslHandler);
+
+                            try {
+//                                SslContext sslContext = TLCPWithNettyDemo.createJdkContext(false);
+//                                pipeline.addLast(sslContext.newHandler(ch.alloc()));
+
+                                SslHandler sslHandler = SSLHandlerProvider.getSSLHandler();
+                                pipeline.addLast(sslHandler);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
 
                             pipeline.addLast(new StringDecoder());
                             pipeline.addLast(new StringEncoder());
@@ -86,9 +96,9 @@ public class NettySSLDemo {
                             ChannelPipeline pipeline = ch.pipeline();
 
                             try {
-//                                SSLEngine sslEngine = createClientSslContext().newEngine(ch.alloc());
+//                                SSLEngine sslEngine = TLCPWithNettyDemo.createJdkContext(true).newEngine(ch.alloc());
                                 SSLEngine sslEngine = ClientSSLContextProvider.getClientSslContext().newEngine(ch.alloc());
-                                ch.pipeline().addLast(new SslHandler(sslEngine));
+                                pipeline.addLast(new SslHandler(sslEngine));
                             } catch (Exception e) {
                                 throw new RuntimeException(e);
                             }
@@ -99,7 +109,7 @@ public class NettySSLDemo {
                         }
                     });
 
-            ChannelFuture future = bootstrap.connect("127.0.0.1", port).sync();
+            ChannelFuture future = bootstrap.connect(Constant.IP, port).sync();
             System.out.println("Client connected to server on port " + port);
 
             future.channel().closeFuture().sync();
@@ -145,9 +155,4 @@ public class NettySSLDemo {
         }
     }
 
-    private static SslContext createClientSslContext() throws Exception {
-        return SslContextBuilder.forClient()
-                .trustManager(InsecureTrustManagerFactory.INSTANCE)
-                .build();
-    }
 }
