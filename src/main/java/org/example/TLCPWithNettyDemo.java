@@ -22,14 +22,7 @@ package org.example;
 import com.tencent.kona.sun.security.x509.SMCertificate;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -57,10 +50,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.StreamSupport;
 
 /**
@@ -257,6 +247,22 @@ public class TLCPWithNettyDemo {
 
         // Add providers.
 
+        int port = 8085;
+
+        new Thread(() -> {
+            try {
+                runServer(port);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+
+        Thread.sleep(1000); // 等待服务器启动
+        runClient(port);
+
+    }
+    private static void runServer(int port) throws Exception {
+
         // Run Netty server, which supports TLCP connection.
         EventLoopGroup bossGroup = new NioEventLoopGroup();
         EventLoopGroup workerGroup = new NioEventLoopGroup();
@@ -268,11 +274,11 @@ public class TLCPWithNettyDemo {
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
                 .childHandler(new ServerChannelInitializer(
                         createJdkContext(false)));
-            ChannelFuture channelFuture = bootstrap.bind(0).sync();
 
-            int port = ((InetSocketAddress) channelFuture.channel()
-                    .localAddress()).getPort();
-            runClient(port);
+            ChannelFuture channelFuture = bootstrap.bind(port).sync();
+            System.out.println("Server started on port " + port);
+            channelFuture.channel().closeFuture().sync();
+
         } finally {
             bossGroup.shutdownGracefully();
             workerGroup.shutdownGracefully();
@@ -295,6 +301,8 @@ public class TLCPWithNettyDemo {
             pipeline.addLast(new LineBasedFrameDecoder(1024));
             pipeline.addLast(new StringDecoder(StandardCharsets.UTF_8));
             pipeline.addLast(new StringEncoder(StandardCharsets.UTF_8));
+            pipeline.addLast(new NettyServerHandler());
+
         }
     }
 
@@ -309,7 +317,7 @@ public class TLCPWithNettyDemo {
             bootstrap.handler(new ClientChannelInitializer(
                     createJdkContext(true)));
 
-            ChannelFuture future = bootstrap.connect("127.0.0.1", port).sync();
+            ChannelFuture future = bootstrap.connect(Constant.IP, port).sync();
             future.channel().closeFuture().sync();
         } finally {
             workerGroup.shutdownGracefully();
@@ -336,7 +344,7 @@ public class TLCPWithNettyDemo {
         }
     }
 
-    private static class ClientHandler extends ChannelInboundHandlerAdapter {
+    private static class ClientHandler extends SimpleChannelInboundHandler<String>  {
 
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
@@ -345,13 +353,65 @@ public class TLCPWithNettyDemo {
         }
 
         @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            System.out.println((String) msg);
+        protected void channelRead0(ChannelHandlerContext ctx, String msg) {
+            System.out.println("Client received message: " + msg);
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            ctx.writeAndFlush("Client response: " +  new Date() + "\n");
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            System.out.println("channelInactive");
+        }
+
+        @Override
+        public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+            System.out.println("channelRegistered");
+        }
+
+        @Override
+        public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+            System.out.println("channelUnregistered");
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+            System.out.println(evt);
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            System.err.println(cause.fillInStackTrace());
+        }
+    }
+
+   public static class NettyServerHandler extends SimpleChannelInboundHandler<String> {
+       @Override
+       protected void channelRead0(ChannelHandlerContext ctx, String msg) {
+           System.out.println("Server received message: " + msg);
+
+           try {
+               Thread.sleep(1000);
+           } catch (InterruptedException e) {
+               throw new RuntimeException(e);
+           }
+           ctx.writeAndFlush("Server response: " + new Date() + "\n");
+       }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            // 发生异常时关闭连接
+            cause.printStackTrace();
             ctx.close();
         }
     }
 
-    private static JdkSslContext createJdkContext(boolean isClient)
+    public static JdkSslContext createJdkContext(boolean isClient)
             throws Exception {
         return new JdkSslContext(
                 createContext(),

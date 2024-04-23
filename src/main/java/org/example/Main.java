@@ -15,8 +15,8 @@ public class Main {
         Security.addProvider(new KonaCryptoProvider());
         Security.addProvider(new KonaPKIXProvider());
         Security.addProvider(new KonaSSLProvider());
-//        new TLCPWithNettyDemo().tlcpDemo();
-        NettySSLDemo.demo();
+        new TLCPWithNettyDemo().tlcpDemo();
+//        NettySSLDemo.demo();
         System.out.println("stop!");
 
     }
